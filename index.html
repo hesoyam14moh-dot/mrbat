@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>لعبة المربعات</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;touch-action:none;user-select:none;font-family:sans-serif}
+  html,body{width:100%;height:100%;overflow:hidden;background:#000;color:#fff}
+  canvas{display:block}
+  #menu{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(0,0,0,.7) url('https://i.postimg.cc/fySxHKv2/IMG-20261020-205932-103.jpg') center/cover no-repeat;z-index:100;padding:20px}
+  #menu h2{font-size:32px;color:#fff;text-shadow:0 0 20px #e94560,0 0 40px #e94560;margin-bottom:10px}
+  #menu input, #menu button{padding:12px 20px;font-size:18px;border-radius:10px;border:2px solid rgba(255,255,255,.6);width:220px;text-align:center;background:rgba(0,0,0,.6);color:#fff}
+  #menu button{background:#e94560;font-weight:bold;border:none;cursor:pointer}
+  #menu #join{background:#0f3460}
+  #menu #soloPlay{background:#22aa44}
+  #msg{color:#4ade80;min-height:20px;font-weight:bold;text-shadow:0 0 8px #000}
+  #joy{position:fixed;bottom:20px;left:20px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.15);display:none;z-index:20}
+  #stick{position:absolute;top:50%;left:50%;width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.7);transform:translate(-50%,-50%)}
+  #jump,#shoot{position:fixed;right:20px;width:80px;height:80px;border-radius:50%;border:2px solid #fff;display:none;align-items:center;justify-content:center;font-weight:bold;z-index:20}
+  #jump{bottom:20px;background:#0f3460}
+  #shoot{bottom:110px;background:#e94560}
+  #roomBox{position:fixed;top:10px;right:10px;background:#e94560;padding:8px 14px;border-radius:8px;display:none;z-index:20;font-weight:bold;font-size:14px}
+  #pw{display:none;gap:5px;align-items:center;background:rgba(0,0,0,.5);padding:4px 10px 4px 4px;border-radius:25px;border:2px solid rgba(255,220,80,.5);position:fixed;top:55px;left:10px;z-index:20}
+  #pi{width:32px;height:32px;border-radius:50%;background:url('https://i.postimg.cc/hvZGNWp3/IMG-20261008-153917-222.jpg') center/cover;border:2px solid rgba(255,220,80,.8)}
+  #pv{color:#fe4;font-size:16px;font-weight:bold;min-width:26px;text-align:center}
+  #emoteBtn{position:fixed;top:55px;right:10px;background:#e94560;padding:6px 14px;border-radius:15px;display:none;z-index:20;font-weight:bold;cursor:pointer;font-size:13px;border:2px solid #fff}
+  #emoteModal{position:fixed;inset:0;background:rgba(0,0,0,.9);display:none;align-items:center;justify-content:center;z-index:200}
+  #emoteModal .box2{background:#16213e;padding:20px;border-radius:12px;display:flex;flex-direction:column;gap:10px;width:340px}
+  #emoteGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  #emoteGrid img{width:100%;height:140px;object-fit:cover;border-radius:8px;cursor:pointer;border:2px solid #444}
+  #emoteGrid img:hover{border-color:#e94560}
+  #notif{position:fixed;top:60px;left:50%;transform:translateX(-50%);background:rgba(74,222,128,.95);color:#000;padding:10px 20px;border-radius:10px;font-weight:bold;font-size:16px;display:none;z-index:300}
+  #cd{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-size:80px;font-weight:bold;display:none;z-index:50}
+  #cdTxt{position:fixed;top:65%;left:50%;transform:translateX(-50%);font-size:20px;font-weight:bold;color:#fff;display:none;z-index:50}
+</style>
+</head>
+<body>
+<div id="menu">
+  <h2>لعبة المربعات</h2>
+  <button id="create">إنشاء غرفة</button>
+  <input id="codeIn" placeholder="---" maxlength="3" inputmode="numeric">
+  <button id="join">انضمام</button>
+  <button id="soloPlay">🎮 لعب فردي</button>
+  <div id="msg"></div>
+</div>
+<div id="roomBox">🔑 ---</div>
+<div id="pw"><div id="pi"></div><span id="pv">0</span></div>
+<button id="emoteBtn">😀</button>
+<div id="notif">✅</div>
+<div id="cd">3</div>
+<div id="cdTxt">استعد...</div>
+<div id="joy"><div id="stick"></div></div>
+<div id="jump">قفز</div>
+<div id="shoot">ضرب</div>
+
+<div id="emoteModal"><div class="box2">
+  <h3>اختر تعبير</h3>
+  <div id="emoteGrid"></div>
+  <button id="emoteClose" style="background:#0f3460;border-radius:8px;padding:10px">إغلاق</button>
+</div></div>
+
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+let peer,conn,myId;
+let scene,camera,renderer;
+const others={},emoteM={},boxes=[],tiles=[],rockets=[];
+const me={x:0,y:8,z:0,vy:0,onGround:false};
+let yaw=Math.PI,pitch=0,joy={x:0,y:0},lastSend=0;
+let inArena=false,cd=false,cdT=0,onTile=false,ready2=false;
+let ammo=5,reloading=false;
+
+const BASE={head:{w:.56,h:.52,d:.56,c:16108848},body:{w:.88,h:.9,d:.46,c:3108832},armL:{w:.4,h:.9,d:.42,c:16108848},armR:{w:.4,h:.9,d:.42,c:16108848},legs:{w:.88,h:1.08,d:.42,c:4177727}};
+const EMOTES=[
+  'https://i.postimg.cc/5NTVbbPc/Messenger-creation-B00171BB-31AD-484C-8844-74686DB0069C.jpg',
+  'https://i.postimg.cc/WzfPDvTZ/IMG-20260926-205329-883.jpg',
+  'https://i.postimg.cc/tTkbj6c6/IMG-20260925-151548-617.jpg',
+  'https://i.postimg.cc/CKjYcXHN/IMG-20260925-150431-705.jpg'
+];
+
+const SPD=.4,JMP=.6,GRV=-.022,PR=.7,PH=3,SC=1.2;
+const AY=140,GAP=20,SZ=10,GD=8,LY=6;
+const CLR=[0xff5566,0xffdd44,0x44ddff,0x99ff66,0xff88ff,0xffaa44];
+
+// ★ زر اللعب الفردي — يفتح الرابط مباشرة
+$('soloPlay').onclick=()=>{
+  window.open('https://hesoyam14moh-dot.github.io/squares/','_blank');
+};
+
+$('create').onclick=()=>{
+  const c=Math.floor(100+Math.random()*900).toString();
+  myId='h'+c;peer=new Peer(myId);
+  peer.on('open',()=>{$('roomBox').textContent='🔑 '+c;$('roomBox').style.display='block';start();});
+  peer.on('connection',x=>{conn=x;x.on('open',()=>{x.on('data',onData);x.send({t:'hi',id:myId,x:me.x,y:me.y,z:me.z});});});
+};
+$('join').onclick=()=>{
+  const c=$('codeIn').value.trim();
+  if(c.length!==3)return;
+  myId='g'+Math.floor(Math.random()*9999);peer=new Peer(myId);
+  peer.on('open',()=>{
+    conn=peer.connect('h'+c);
+    conn.on('open',()=>{conn.on('data',onData);conn.send({t:'hi',id:myId,x:me.x,y:me.y,z:me.z});$('roomBox').textContent='🔑 '+c;$('roomBox').style.display='block';start();});
+  });
+};
+function send(d){if(conn&&conn.open)try{conn.send(d)}catch(e){}}
+
+function onData(d){
+  if(d.t==='hi'){addOther(d.id,d.x,d.y,d.z);send({t:'hi',id:myId,x:me.x,y:me.y,z:me.z});}
+  else if(d.t==='m'){const o=others[d.id];if(o){o.position.set(d.x,d.y+1.5,d.z);o.rotation.y=d.ry;}}
+  else if(d.t==='ready'){ready2=true;tStart();}
+  else if(d.t==='notready'){ready2=false;}
+  else if(d.t==='count'){if(!cd){cd=true;cdT=performance.now();$('cd').style.display='block';$('cdTxt').style.display='block';}}
+  else if(d.t==='tp'){inArena=true;cd=false;$('cd').style.display='none';$('cdTxt').style.display='none';me.x=0;me.z=0;me.y=AY+(LY-1)*GAP+2;me.vy=0;}
+  else if(d.t==='tile'){hTile(d.i);}
+  else if(d.t==='reset'){rst();}
+  else if(d.t==='rocket'){sRkt(d.x,d.y,d.z,d.dx,d.dy,d.dz);}
+  else if(d.t==='emote'){sEmote(d.id,d.url);}
+}
+
+function buildPlayer(){
+  const g=new THREE.Group(),p=BASE;
+  const mk=(pt)=>new THREE.Mesh(new THREE.BoxGeometry(pt.w*SC,pt.h*SC,pt.d*SC),new THREE.MeshLambertMaterial({color:pt.c}));
+  const body=mk(p.body);g.add(body);
+  const head=mk(p.head);head.position.y=(p.body.h/2+p.head.h/2)*SC;g.add(head);
+  const eg=new THREE.CircleGeometry(.08*SC,8),em=new THREE.MeshBasicMaterial({color:0});
+  const eL=new THREE.Mesh(eg,em);eL.position.set(-p.head.w*SC*.18,head.position.y+p.head.h*SC*.08,p.head.d/2*SC+.01);g.add(eL);
+  const eR=new THREE.Mesh(eg,em);eR.position.set(p.head.w*SC*.18,head.position.y+p.head.h*SC*.08,p.head.d/2*SC+.01);g.add(eR);
+  const aL=mk(p.armL);aL.position.set(-(p.body.w/2+p.armL.w/2)*SC,0,0);g.add(aL);
+  const aR=mk(p.armR);aR.position.set((p.body.w/2+p.armR.w/2)*SC,0,0);g.add(aR);
+  const lg=mk(p.legs);lg.position.y=-(p.body.h/2+p.legs.h/2)*SC;g.add(lg);
+  
+  // بازوكا على الكتف
+  const l=new THREE.Group();
+  const tube=new THREE.Mesh(new THREE.CylinderGeometry(0.35,0.35,3.5,8),new THREE.MeshLambertMaterial({color:0x444444}));
+  tube.rotation.z=Math.PI/2;l.add(tube);
+  const mz=new THREE.Mesh(new THREE.CylinderGeometry(0.55,0.55,0.3,8),new THREE.MeshLambertMaterial({color:0x222222}));
+  mz.rotation.z=Math.PI/2;mz.position.x=1.6;l.add(mz);
+  l.scale.set(SC*0.9,SC*0.9,SC*0.9);
+  l.rotation.y=-28*Math.PI/180;
+  l.position.set(p.body.w/2*SC*1.1,0.8,0);
+  g.add(l);
+  
+  return g;
+}
+
+function sEmote(id,url){
+  if(emoteM[id]){scene.remove(emoteM[id]);delete emoteM[id];}
+  if(!url)return;
+  const loader=new THREE.TextureLoader();
+  loader.setCrossOrigin('anonymous');
+  loader.load(url,(tx)=>{
+    tx.anisotropy=renderer.capabilities.getMaxAnisotropy();
+    const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tx,transparent:true}));
+    sp.scale.set(5,7,1);
+    const o=others[id];
+    if(o) sp.position.set(o.position.x,o.position.y+6,o.position.z);
+    scene.add(sp);emoteM[id]=sp;
+    setTimeout(()=>{if(emoteM[id]){scene.remove(emoteM[id]);delete emoteM[id];}},10000);
+  });
+}
+
+function addOther(id,x,y,z){
+  if(others[id])return;
+  const g=buildPlayer();g.position.set(x,y+1.5,z);scene.add(g);others[id]=g;
+}
+
+function start(){
+  $('menu').style.display='none';
+  $('joy').style.display='block';
+  $('emoteBtn').style.display='block';
+  $('pw').style.display='flex';
+  $('jump').style.display='flex';
+  $('shoot').style.display='flex';
+  init();requestAnimationFrame(loop);
+}
+
+function init(){
+  scene=new THREE.Scene();scene.background=new THREE.Color(0x000011);
+  camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,1500);
+  renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);document.body.appendChild(renderer.domElement);
+  scene.add(new THREE.AmbientLight(0xffffff,.9));
+  const sun=new THREE.DirectionalLight(0xffffff,1);sun.position.set(40,80,30);scene.add(sun);
+  const sp=[];for(let i=0;i<500;i++)sp.push((Math.random()-.5)*800,(Math.random()-.5)*800,(Math.random()-.5)*800);
+  const sg=new THREE.BufferGeometry();sg.setAttribute('position',new THREE.Float32BufferAttribute(sp,3));
+  scene.add(new THREE.Points(sg,new THREE.PointsMaterial({color:0xffffff,size:1})));
+  const fl=new THREE.Mesh(new THREE.BoxGeometry(121,1,121),new THREE.MeshLambertMaterial({color:0x444444}));
+  fl.position.set(-2,1,-5);scene.add(fl);boxes.push({minX:-62.5,maxX:58.5,minY:.5,maxY:1.5,minZ:-65.5,maxZ:55.5});
+  const wm=new THREE.MeshLambertMaterial({color:0xff99cc,transparent:true,opacity:.2,side:THREE.DoubleSide});
+  [[-2,60,55,121,121,1],[-63,60,-5,1,121,121],[-2,60,-66,121,121,1],[59,60,-5,1,121,121]].forEach(w=>{
+    const m=new THREE.Mesh(new THREE.BoxGeometry(w[3],w[4],w[5]),wm);m.position.set(w[0],w[1],w[2]);scene.add(m);
+  });
+  boxes.push({minX:-62.5,maxX:58.5,minY:0,maxY:121,minZ:54.5,maxZ:55.5});
+  boxes.push({minX:-63.5,maxX:-62.5,minY:0,maxY:121,minZ:-65.5,maxZ:55.5});
+  boxes.push({minX:-62.5,maxX:58.5,minY:0,maxY:121,minZ:-66.5,maxZ:-65.5});
+  boxes.push({minX:58.5,maxX:59.5,minY:0,maxY:121,minZ:-65.5,maxZ:55.5});
+  const gt=new THREE.Mesh(new THREE.BoxGeometry(8,.4,8),new THREE.MeshLambertMaterial({color:0x22dd22}));
+  gt.position.set(-8,1.7,0);scene.add(gt);
+  boxes.push({minX:-12,maxX:-4,minY:1.5,maxY:1.9,minZ:-4,maxZ:4,trigger:true});
+  const bt=new THREE.Mesh(new THREE.BoxGeometry(8,.4,8),new THREE.MeshLambertMaterial({color:0x2266ff}));
+  bt.position.set(8,1.7,0);scene.add(bt);
+  boxes.push({minX:4,maxX:12,minY:1.5,maxY:1.9,minZ:-4,maxZ:4,trigger:true});
+  for(let L=0;L<LY;L++){
+    const y=AY+L*GAP;
+    for(let i=0;i<GD;i++)for(let j=0;j<GD;j++){
+      const x=(i-GD/2+.5)*SZ,z=(j-GD/2+.5)*SZ;
+      const m=new THREE.Mesh(new THREE.BoxGeometry(SZ-.2,.4,SZ-.2),new THREE.MeshLambertMaterial({color:CLR[L%CLR.length]}));
+      m.position.set(x,y,z);scene.add(m);
+      tiles.push({mesh:m,minX:x-SZ/2,maxX:x+SZ/2,minY:y-.2,maxY:y+.2,minZ:z-SZ/2,maxZ:z+SZ/2,hidden:false,timer:null});
+    }
+  }
+  me.y=8;
+}
+
+function hitWall(x,y,z){
+  for(const b of boxes){if(b.trigger)continue;if(x+PR>b.minX&&x-PR<b.maxX&&z+PR>b.minZ&&z-PR<b.maxZ&&y+PH>b.minY+.1&&y<b.maxY-.2)return true;}
+  return false;
+}
+function ground(x,y,z,vy){
+  let b=null;
+  for(const bx of boxes){if(bx.trigger)continue;if(x+PR>bx.minX&&x-PR<bx.maxX&&z+PR>bx.minZ&&z-PR<bx.maxZ&&y>=bx.maxY-.4&&y<=bx.maxY+.8&&vy<=.01){if(b===null||bx.maxY>b)b=bx.maxY;}}
+  for(const t of tiles){if(t.hidden)continue;if(x+PR>t.minX&&x-PR<t.maxX&&z+PR>t.minZ&&z-PR<t.maxZ&&y>=t.maxY-.4&&y<=t.maxY+.8&&vy<=.01){if(b===null||t.maxY>b)b=t.maxY;}}
+  return b;
+}
+function hTile(i){
+  const t=tiles[i];if(!t||t.hidden||t.timer)return;
+  t.timer=setTimeout(()=>{
+    let o=1;const iv=setInterval(()=>{o-=.2;if(o<=0){clearInterval(iv);t.hidden=true;t.mesh.material.opacity=.03;t.timer=null;}else{t.mesh.material.transparent=true;t.mesh.material.opacity=o;}},80);t.timer=iv;
+  },1000);
+}
+function tStart(){
+  if(cd||inArena)return;
+  let on=false;
+  for(const b of boxes){
+    if(!b.trigger)continue;
+    if(me.x+PR>b.minX&&me.x-PR<b.maxX&&me.z+PR>b.minZ&&me.z-PR<b.maxZ&&me.y>=b.minY-.5&&me.y<=b.maxY+.5){
+      on=true;break;
+    }
+  }
+  if(on && !onTile){
+    onTile=true;
+    cd=true;cdT=performance.now();$('cd').style.display='block';$('cdTxt').style.display='block';
+    send({t:'count'});
+  } else if(!on){
+    onTile=false;
+  }
+}
+function rst(){
+  for(const t of tiles){if(t.timer){clearTimeout(t.timer);clearInterval(t.timer);t.timer=null;}t.hidden=false;t.mesh.material.transparent=false;t.mesh.material.opacity=1;}
+  for(const r of rockets)scene.remove(r);
+  rockets.length=0;
+  inArena=false;cd=false;me.x=0;me.z=0;me.y=8;me.vy=0;onTile=false;ammo=5;reloading=false;
+}
+function shoot(){
+  if(reloading||ammo<=0)return;ammo--;
+  const cp=Math.cos(pitch),dx=Math.sin(yaw)*cp,dy=-Math.sin(pitch),dz=Math.cos(yaw)*cp;
+  const sx=me.x+dx*1.5,sy=me.y+2.5,sz=me.z+dz*1.5;
+  sRkt(sx,sy,sz,dx,dy,dz);send({t:'rocket',x:sx,y:sy,z:sz,dx,dy,dz});
+  if(ammo<=0){reloading=true;setTimeout(()=>{ammo=5;reloading=false;},2000);}
+}
+function sRkt(x,y,z,dx,dy,dz){
+  const m=new THREE.Mesh(new THREE.SphereGeometry(.5,6,6),new THREE.MeshBasicMaterial({color:0xff4400}));
+  m.position.set(x,y,z);m.userData={dx,dy,dz,life:150};scene.add(m);rockets.push(m);
+}
+
+$('emoteBtn').onclick=()=>{
+  const g=$('emoteGrid');g.innerHTML='';
+  EMOTES.forEach(u=>{
+    const i=document.createElement('img');
+    i.src=u;
+    i.onclick=()=>{
+      send({t:'emote',id:myId,url:u});
+      $('notif').textContent='✅ تم إرسال التعبير';$('notif').style.display='block';
+      setTimeout(()=>$('notif').style.display='none',1500);
+      $('emoteModal').style.display='none';
+    };
+    g.appendChild(i);
+  });
+  $('emoteModal').style.display='flex';
+};
+$('emoteClose').onclick=()=>$('emoteModal').style.display='none';
+
+let jid=null,jst={x:0,y:0};
+$('joy').addEventListener('touchstart',e=>{e.preventDefault();jid=e.changedTouches[0].identifier;const r=$('joy').getBoundingClientRect();jst.x=r.left+r.width/2;jst.y=r.top+r.height/2;},{passive:false});
+$('joy').addEventListener('touchmove',e=>{e.preventDefault();for(const t of e.changedTouches)if(t.identifier===jid){let dx=t.clientX-jst.x,dy=t.clientY-jst.y;const d=Math.hypot(dx,dy),m=45;if(d>m){dx=dx/d*m;dy=dy/d*m;}$('stick').style.transform=`translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px))`;joy.x=dx/m;joy.y=dy/m;}},{passive:false});
+$('joy').addEventListener('touchend',e=>{for(const t of e.changedTouches)if(t.identifier===jid){jid=null;joy={x:0,y:0};$('stick').style.transform='translate(-50%,-50%)';}});
+
+let lid=null,lx=0,ly=0;
+document.addEventListener('touchstart',e=>{
+  const el=document.elementFromPoint(e.changedTouches[0].clientX,e.changedTouches[0].clientY);
+  if(el&&el.closest('button,img,input,#joy,#emoteModal,#menu,#pw'))return;
+  const t=e.changedTouches[0];lid=t.identifier;lx=t.clientX;ly=t.clientY;
+},{passive:true});
+document.addEventListener('touchmove',e=>{if(lid===null)return;for(const t of e.changedTouches)if(t.identifier===lid){yaw-=(t.clientX-lx)*.006;pitch+=(t.clientY-ly)*.004;pitch=Math.max(-1.2,Math.min(1.2,pitch));lx=t.clientX;ly=t.clientY;}},{passive:true});
+document.addEventListener('touchend',e=>{for(const t of e.changedTouches)if(t.identifier===lid)lid=null;});
+$('jump').addEventListener('touchstart',e=>{e.preventDefault();if(me.onGround){me.vy=JMP;me.onGround=false;}},{passive:false});
+$('shoot').addEventListener('touchstart',e=>{e.preventDefault();shoot();},{passive:false});
+
+function loop(t){
+  requestAnimationFrame(loop);
+  if(cd){
+    const el=performance.now()-cdT,n=3-Math.floor(el/1000);
+    $('cd').textContent=n>0?n:'GO!';
+    if(el>=3000){
+      inArena=true;cd=false;$('cd').style.display='none';$('cdTxt').style.display='none';
+      me.x=0;me.z=0;me.y=AY+(LY-1)*GAP+2;me.vy=0;
+    }
+  }
+  if(Math.abs(joy.x)>.15||Math.abs(joy.y)>.15){
+    const fx=Math.sin(yaw),fz=Math.cos(yaw);
+    const dx=(fx*-joy.y+fz*-joy.x)*SPD,dz=(fz*-joy.y-fx*-joy.x)*SPD;
+    if(!hitWall(me.x+dx,me.y,me.z))me.x+=dx;
+    if(!hitWall(me.x,me.y,me.z+dz))me.z+=dz;
+  }
+  me.vy+=GRV;me.y+=me.vy;
+  const g=ground(me.x,me.y,me.z,me.vy);
+  if(g!==null){me.y=g;me.vy=0;me.onGround=true;}else me.onGround=false;
+  tStart();
+  if(inArena){
+    for(let i=0;i<tiles.length;i++){
+      const ti=tiles[i];
+      if(ti.hidden||ti.timer)continue;
+      if(cd)continue;
+      if(me.x+PR>ti.minX&&me.x-PR<ti.maxX&&me.z+PR>ti.minZ&&me.z-PR<ti.maxZ&&Math.abs(me.y-ti.maxY)<0.6&&me.vy<=0.01){
+        hTile(i);send({t:'tile',i});
+      }
+    }
+    if(me.y<AY-5){send({t:'reset'});rst();return;}
+  }
+  if(me.y<-50){me.x=0;me.z=0;me.y=8;me.vy=0;}
+  
+  camera.position.set(me.x,me.y+2.5,me.z);
+  camera.lookAt(me.x+Math.sin(yaw)*Math.cos(pitch),me.y+2.5-Math.sin(pitch),me.z+Math.cos(yaw)*Math.cos(pitch));
+  
+  for(const id in emoteM){const o=others[id];if(o)emoteM[id].position.set(o.position.x,o.position.y+6,o.position.z);}
+  for(let i=rockets.length-1;i>=0;i--){
+    const r=rockets[i];r.position.x+=r.userData.dx*1.2;r.position.y+=r.userData.dy*1.2;r.position.z+=r.userData.dz*1.2;r.userData.life--;
+    let hit=false;
+    for(let j=0;j<tiles.length;j++){const ti=tiles[j];if(ti.hidden)continue;if(r.position.x>ti.minX-.5&&r.position.x<ti.maxX+.5&&r.position.y>ti.minY-.5&&r.position.y<ti.maxY+.5&&r.position.z>ti.minZ-.5&&r.position.z<ti.maxZ+.5){hTile(j);send({t:'tile',i:j});hit=true;break;}}
+    if(hit||r.userData.life<=0){scene.remove(r);rockets.splice(i,1);}
+  }
+  if(t-lastSend>60){send({t:'m',id:myId,x:me.x,y:me.y,z:me.z,ry:yaw});lastSend=t;}
+  renderer.render(scene,camera);
+}
+
+addEventListener('resize',()=>{if(!camera)return;camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+addEventListener('beforeunload',()=>{if(peer)peer.destroy();});
+</script>
+</body>
+</html>
